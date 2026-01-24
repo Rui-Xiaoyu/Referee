@@ -17,7 +17,7 @@ module_description: RM_Referee_2025
 constructor_args:
   - task_stack_depth_uart: 2048
   - cmd_data_tp_name: "cmd_raw_data_"
-  - uart: hw.Find<LibXR::UART>("uart_ref")
+  - uart: "uart_ref"
   - baudrate: 115200
   - referee_chassis_tp_name: "chassis_ref"
   - referee_launcher_tp_name: "launcher_ref"
@@ -856,13 +856,13 @@ class Referee : public LibXR::Application {
    * @param baudrate
    */
   Referee(LibXR::HardwareContainer& hw, LibXR::ApplicationManager& app,
-          uint32_t task_stack_depth_uart, LibXR::UART* uart, uint32_t baudrate,
+          uint32_t task_stack_depth_uart, const char* uart, uint32_t baudrate,
           const char* referee_chassis_tp_name,
           const char* referee_launcher_tp_name,
           const char* referee_sentry_tp_name)
-      : uart_(uart),
+      : uart_(hw.Find<LibXR::UART>(uart)),
         sem_(),
-        op_(sem_),  /* TODO:测延时 */
+        op_(sem_), /* TODO:测延时 */
         chassispack_topic_(referee_chassis_tp_name, sizeof(ChassisPack),
                            nullptr, true),
         launcherpack_topic_(referee_launcher_tp_name, sizeof(LauncherPack),
