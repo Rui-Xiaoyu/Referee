@@ -759,7 +759,7 @@ class Referee : public LibXR::Application {
   };
 
   /**
-   * @brief 传递的总结构体
+   * @brief 传递的总结构体,共27条
    *
    */
   struct Data {
@@ -779,18 +779,29 @@ class Referee : public LibXR::Application {
     BulletRemain bullet_remain;                 /* 0x0208 */
     RFID rfid;                                  /* 0x0209 */
     DartClient dart_client;                     /* 0x020A */
-    ClientMap client_map;                       /* 0x0303 */
-    KeyboardMouse keyboard_mouse;               /* 0x0304 */
-    SentryPosition sentry_postion;              /* 0x0307 */
-    RobotPosition robot_position;               /* 0x0308 */
-    CustomController custom_controller;         /* 0x0302 */
-    RobotPosForSentry robot_pos_for_snetry;     /* 0x020B */
+    RobotPosForSentry sentry_pos;               /* 0x020B */
     RadarMarkProgress radar_mark_progress;      /* 0x020C */
     SentryInfo sentry_decision;                 /* 0x020D */
     RadarInfo radar_decision;                   /* 0x020E */
     RobotInteractionData robot_ineraction_data; /* 0x0301 */
+    CustomController custom_controller;         /* 0x0302 */
+    ClientMap client_map;                       /* 0x0303 */
+    KeyboardMouse keyboard_mouse;               /* 0x0304 */
     MapRobotData map_robot_data;                /* 0x0305 */
     CustomKeyMouseData custom_key_mouse_data;   /* 0x0306 */
+    SentryPosition sentry_postion;              /* 0x0307 */
+    RobotPosition robot_position;               /* 0x0308 */
+    CustomData1 custom_data1;                   /* 0x0309 */
+    CustomData2 custom_data2;                   /* 0x0310 */
+    RadarEnemyRobotPos radar_enemy_robot_pos;   /* 0x0A01 */
+    RadarEnemyRobotHP radar_enemy_robot_hp;     /* 0x0A02 */
+    RadarEnemyBullet radar_enemy_bullet;        /* 0x0A03 */
+    RadarEnemyState radar_enemy_state;          /* 0x0A04 */
+    RadarRobotBuff radar_robot_buff;            /* 0x0A05 */
+    RadarEnemyKey radar_enemy_key;              /* 0x0A06 */
+    SentryDecisionData sentry_dec_data;         /* 0x0120 */
+    SetVideoTransChannel set_vid_trans_ch;      /* 0x0F01 */
+    GetVideoTransChannel get_vid_trans_ch;      /* 0x0F02 */
   };
 
   /**
@@ -834,10 +845,6 @@ class Referee : public LibXR::Application {
     UNUSED(app);
     uart_->SetConfig({baudrate, LibXR::UART::Parity::NO_PARITY, 8, 1});
 
-    auto transmit_cb = [](bool in_isr) {
-
-    };
-
     this->thread_.Create(this, ThreadFunc, "Referee", task_stack_depth_uart,
                          LibXR::Thread::Priority::HIGH);
   }
@@ -864,8 +871,9 @@ class Referee : public LibXR::Application {
     while (1) {
       do {
         /* 这样的写法主要是防编译器神秘warning */
-        this->uart_->Read({&byte, 1}, this->op_); /* op是阻塞的 */
+        this->uart_->Read({&byte, 1}, this->op_);
       } while (byte == 0xA5);
+      /* header的head不会被修改 */
       this->uart_->Read(
           {reinterpret_cast<uint8_t*>(&header_) + 1, sizeof(Header) - 1},
           this->op_);
@@ -899,6 +907,9 @@ class Referee : public LibXR::Application {
   /* 协议/数据流 */
   Header header_;
   Data data_;
+  LibXR::Topic chassispack_topic_;
+  LibXR::Topic launcherpack_topic_;
+  LibXR::Topic sentrypack_topic_;
 
   /* 线程相关 */
   uint64_t last_wake_up_; /* ms */
