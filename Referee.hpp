@@ -1,3 +1,14 @@
+/**
+ * @file Referee.hpp
+ * @author w (2055498415@qq.com)
+ * @brief
+ * @version 0.1
+ * @date 2026-01-25
+ *
+ * @copyright Copyright (c) 2026
+ *
+ */
+
 #pragma once
 
 // clang-format off
@@ -10,6 +21,7 @@ required_hardware:
 depends: []
 === END MANIFEST === */
 // clang-format on
+#include <cstddef>
 #include <cstdint>
 
 #include "app_framework.hpp"
@@ -93,7 +105,7 @@ class Referee : public LibXR::Application {
   };
 
   /**
-   * @brief 裁判系统的状态
+   * @brief 裁判系统的状态(可能会用到吧)
    *
    */
   enum class Status : uint8_t {
@@ -857,8 +869,8 @@ class Referee : public LibXR::Application {
     ref->uart_->read_port_->Reset();
     while (1) {
       ref->FindHeader();
-      ref->ParseData();
-      /* publish */
+      ref->last_parse_ = ref->ParseData();
+      ref->Publish();
     }
   }
 
@@ -867,6 +879,7 @@ class Referee : public LibXR::Application {
    *
    */
   void FindHeader() {
+    this->data_.status = Status::OFFLINE; /* 假设离线 */
     uint8_t byte = 0x00;
     while (1) {
       do {
@@ -874,11 +887,11 @@ class Referee : public LibXR::Application {
         this->uart_->Read({&byte, 1}, this->op_);
       } while (byte == 0xA5);
       /* header的head不会被修改 */
-      this->uart_->Read(
-          {reinterpret_cast<uint8_t*>(&header_) + 1, sizeof(Header) - 1},
-          this->op_);
+      this->uart_->Read({reinterpret_cast<uint8_t*>(&this->pack_.header_) + 1,
+                         sizeof(Header) - 1},
+                        this->op_);
 
-      if (LibXR::CRC8::Verify(reinterpret_cast<uint8_t*>(&this->header_),
+      if (LibXR::CRC8::Verify(reinterpret_cast<uint8_t*>(&this->pack_.header_),
                               sizeof(Header))) {
         break;
       }
@@ -888,12 +901,318 @@ class Referee : public LibXR::Application {
   /**
    * @brief 解析包数据的函数
    *
-   * @return true
+   * @return true 成功解析
    * @return false
    */
   bool ParseData() {
+    if (this->uart_->Read(
+            {&this->pack_.buf_,
+             static_cast<size_t>(this->pack_.header_.data_length) + 3},
+            this->op_) != ErrorCode::OK) {
+      return false;
+    }
+
+    if (!LibXR::CRC16::Verify(&this->pack_,
+                              this->pack_.header_.data_length + 7)) {
+      return false;
+    }
+
+    this->data_.status = Status::RUNNING; /* 更新状态 */
     this->last_wake_up_ = LibXR::Timebase::GetMilliseconds();
+
+    switch (static_cast<CommandID>(this->pack_.buf_[0] << 8 |
+                                   this->pack_.buf_[1])) {
+      case CommandID::REF_CMD_ID_GAME_STATUS: {
+        /* 0x0001, 比赛状态数据 */
+        LibXR::Memory::FastCopy(&this->data_.game_status, &this->pack_.buf_[2],
+                                sizeof(GameStatus));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_GAME_RESULT: {
+        /* 0x0002, 比赛结果数据 */
+        LibXR::Memory::FastCopy(&this->data_.game_result, &this->pack_.buf_[2],
+                                sizeof(GameResult));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_GAME_ROBOT_HP: {
+        /* 0x0003, 机器人血量数据 */
+        LibXR::Memory::FastCopy(&this->data_.game_robot_hp,
+                                &this->pack_.buf_[2], sizeof(RobotHP));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_FIELD_EVENTS: {
+        /* 0x0101, 场地事件数据 */
+        LibXR::Memory::FastCopy(&this->data_.field_event, &this->pack_.buf_[2],
+                                sizeof(FieldEvents));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_WARNING: {
+        /* 0x0104, 裁判警告数据 */
+        LibXR::Memory::FastCopy(&this->data_.warning, &this->pack_.buf_[2],
+                                sizeof(Warning));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_DART_COUNTDOWN: {
+        /* 0x0105, 飞镖发射相关数据 */
+        LibXR::Memory::FastCopy(&this->data_.dart_countdown,
+                                &this->pack_.buf_[2], sizeof(DartCountdown));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_ROBOT_STATUS: {
+        /* 0x0201, 机器人性能体系数据 */
+        LibXR::Memory::FastCopy(&this->data_.robot_status, &this->pack_.buf_[2],
+                                sizeof(RobotStatus));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_POWER_HEAT_DATA: {
+        /* 0x0202, 实时底盘缓冲能量和射击热量 */
+        LibXR::Memory::FastCopy(&this->data_.power_heat, &this->pack_.buf_[2],
+                                sizeof(PowerHeat));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_ROBOT_POS: {
+        /* 0x0203, 机器人位置数据 */
+        LibXR::Memory::FastCopy(&this->data_.robot_pos, &this->pack_.buf_[2],
+                                sizeof(RobotPOS));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_ROBOT_BUFF: {
+        /* 0x0204, 机器人增益和底盘能量数据 */
+        LibXR::Memory::FastCopy(&this->data_.robot_buff, &this->pack_.buf_[2],
+                                sizeof(RobotBuff));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_DRONE_ENERGY: {
+        /* 0x0205, 老💡的宝贝，不知道是啥 */
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_ROBOT_DMG: {
+        /* 0x0206, 伤害状态数据 */
+        LibXR::Memory::FastCopy(&this->data_.robot_damage, &this->pack_.buf_[2],
+                                sizeof(RobotDamage));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_LAUNCHER_DATA: {
+        /* 0x0207, 实时射击数据 */
+        LibXR::Memory::FastCopy(&this->data_.launcher_data,
+                                &this->pack_.buf_[2], sizeof(LauncherData));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_BULLET_REMAINING: {
+        /* 0x0208, 允许发弹量 */
+        LibXR::Memory::FastCopy(&this->data_.bullet_remain,
+                                &this->pack_.buf_[2], sizeof(BulletRemain));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_RFID: {
+        /* 0x0209, 机器人 RFID 模块状态 */
+        LibXR::Memory::FastCopy(&this->data_.rfid, &this->pack_.buf_[2],
+                                sizeof(RFID));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_DART_CLIENT: {
+        /* 0x020A, 飞镖选手端指令数据 */
+        LibXR::Memory::FastCopy(&this->data_.dart_client, &this->pack_.buf_[2],
+                                sizeof(DartClient));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_ROBOT_POS_TO_SENTRY: {
+        /* 0x020B, 地面机器人位置数据 -> 哨兵 */
+        LibXR::Memory::FastCopy(&this->data_.sentry_pos, &this->pack_.buf_[2],
+                                sizeof(RobotPosForSentry));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_RADAR_MARK: {
+        /* 0x020C, 雷达标记进度数据 */
+        LibXR::Memory::FastCopy(&this->data_.radar_mark_progress,
+                                &this->pack_.buf_[2],
+                                sizeof(RadarMarkProgress));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_SENTRY_DECISION: {
+        /* 0x020D, 哨兵自主决策相关信息同步 */
+        LibXR::Memory::FastCopy(&this->data_.sentry_decision,
+                                &this->pack_.buf_[2], sizeof(SentryInfo));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_RADAR_DECISION: {
+        /* 0x020E, 雷达自主决策相关信息同步 */
+        LibXR::Memory::FastCopy(&this->data_.radar_decision,
+                                &this->pack_.buf_[2], sizeof(RadarInfo));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_INTER_STUDENT: {
+        /* 0x0301, 机器人交互数据 */
+        LibXR::Memory::FastCopy(&this->data_.robot_ineraction_data,
+                                &this->pack_.buf_[2],
+                                sizeof(RobotInteractionData));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_INTER_STUDENT_CUSTOM: {
+        /* 0x0302, 自定义控制器和机器人（图传） */
+        LibXR::Memory::FastCopy(&this->data_.custom_controller,
+                                &this->pack_.buf_[2], sizeof(CustomController));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_CLIENT_MAP: {
+        /* 0x0303, 选手端小地图交互数据 */
+        LibXR::Memory::FastCopy(&this->data_.client_map, &this->pack_.buf_[2],
+                                sizeof(ClientMap));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_KEYBOARD_MOUSE: {
+        /* 0x0304, 键鼠遥控数据 */
+        LibXR::Memory::FastCopy(&this->data_.keyboard_mouse,
+                                &this->pack_.buf_[2], sizeof(KeyboardMouse));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_MAP_ROBOT_DATA: {
+        /* 0x0305, 小地图接收雷达数据 */
+        LibXR::Memory::FastCopy(&this->data_.map_robot_data,
+                                &this->pack_.buf_[2], sizeof(MapRobotData));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_CUSTOM_KEYBOARD_MOUSE: {
+        /* 0x0306, 自定义控制器交互（键鼠模拟） */
+        LibXR::Memory::FastCopy(&this->data_.custom_key_mouse_data,
+                                &this->pack_.buf_[2],
+                                sizeof(CustomKeyMouseData));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_SENTRY_POS_DATA: {
+        /* 0x0307, 小地图接收路径数据 */
+        LibXR::Memory::FastCopy(&this->data_.sentry_postion,
+                                &this->pack_.buf_[2], sizeof(SentryPosition));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_ROBOT_POS_DATA: {
+        /* 0x0308, 选手端小地图接受机器人消息 */
+        LibXR::Memory::FastCopy(&this->data_.robot_position,
+                                &this->pack_.buf_[2], sizeof(RobotPosition));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_CUSTOM_RECV_DATA: {
+        /* 0x0309, 自定义控制器收包 */
+        LibXR::Memory::FastCopy(&this->data_.custom_data1, &this->pack_.buf_[2],
+                                sizeof(CustomData1));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_DATA_TO_CUSTOM_CLIENT: {
+        /* 0x0310, 自定义客户端数据 */
+        LibXR::Memory::FastCopy(&this->data_.custom_data2, &this->pack_.buf_[2],
+                                sizeof(CustomData2));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_SET_VIDEO_TRANS_CH: {
+        /* 0x0F01, 设置图传出图信道 (应答) */
+        LibXR::Memory::FastCopy(&this->data_.set_vid_trans_ch,
+                                &this->pack_.buf_[2],
+                                sizeof(SetVideoTransChannel));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_GET_VIDEO_TRANS_CH: {
+        /* 0x0F02, 查询当前出图信道 (应答) */
+        /* TODO */
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_RADAR_ENEMY_POS: {
+        /* 0x0A01, 对方机器人的位置坐标 */
+        LibXR::Memory::FastCopy(&this->data_.radar_enemy_robot_pos,
+                                &this->pack_.buf_[2],
+                                sizeof(RadarEnemyRobotPos));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_RADAR_ENEMY_HP: {
+        /* 0x0A02, 对方机器人的血量信息 */
+        LibXR::Memory::FastCopy(&this->data_.radar_enemy_robot_hp,
+                                &this->pack_.buf_[2],
+                                sizeof(RadarEnemyRobotHP));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_RADAR_ENEMY_BULLET: {
+        /* 0x0A03, 对方剩余发弹量 */
+        LibXR::Memory::FastCopy(&this->data_.radar_enemy_bullet,
+                                &this->pack_.buf_[2], sizeof(RadarEnemyBullet));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_RADAR_ENEMY_INFO: {
+        /* 0x0A04, 对方宏观状态信息 */
+        LibXR::Memory::FastCopy(&this->data_.radar_enemy_state,
+                                &this->pack_.buf_[2], sizeof(RadarEnemyState));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_RADAR_ENEMY_BUFF: {
+        /* 0x0A05, 对方增益效果 */
+        LibXR::Memory::FastCopy(&this->data_.radar_robot_buff,
+                                &this->pack_.buf_[2], sizeof(RadarRobotBuff));
+        break;
+      }
+
+      case CommandID::REF_CMD_ID_RADAR_ENEMY_KEY: {
+        /* 0x0A06, 对方干扰波密钥 */
+        LibXR::Memory::FastCopy(&this->data_.radar_enemy_key,
+                                &this->pack_.buf_[2], sizeof(RadarEnemyKey));
+        break;
+      }
+
+      default: {
+        /* 未知命令 */
+        return false;
+      }
+    }
     return true;
+  }
+
+  /**
+   * @brief 广播数据的函数
+   *
+   */
+  void Publish() {
+    if (!this->last_parse_) {
+      return;
+    }
+    this->cp_.rs = this->data_.robot_status;
+    this->chassispack_topic_.Publish(this->cp_);
+    this->lp_.rs = this->data_.robot_status;
+    this->launcherpack_topic_.Publish(this->lp_);
+    this->sp_.rs = this->data_.robot_status;
+    this->sentrypack_topic_.Publish(this->sp_);
   }
 
   void OnMonitor() override {}
@@ -905,11 +1224,18 @@ class Referee : public LibXR::Application {
   LibXR::ReadOperation op_;
 
   /* 协议/数据流 */
-  Header header_;
-  Data data_;
+  struct [[gnu::packed]] {
+    Header header_;
+    uint8_t buf_[251]; /* 缓冲区，对齐256 */
+  } pack_;
+  Data data_; /* 数据包本体 */
   LibXR::Topic chassispack_topic_;
+  ChassisPack cp_;  /* 发给底盘的数据包缓冲 */
   LibXR::Topic launcherpack_topic_;
+  ChassisPack lp_; /* 发给发射的数据包缓冲 */
   LibXR::Topic sentrypack_topic_;
+  ChassisPack sp_; /* 发给哨兵的数据包缓冲 */
+  bool last_parse_; /* 上一次解包是否成功 */
 
   /* 线程相关 */
   uint64_t last_wake_up_; /* ms */
