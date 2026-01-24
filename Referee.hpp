@@ -851,8 +851,19 @@ class Referee : public LibXR::Application {
    * @param baudrate
    */
   Referee(LibXR::HardwareContainer& hw, LibXR::ApplicationManager& app,
-          uint32_t task_stack_depth_uart, LibXR::UART* uart, uint32_t baudrate)
-      : uart_(uart), sem_(), op_(sem_) {
+          uint32_t task_stack_depth_uart, LibXR::UART* uart, uint32_t baudrate,
+          const char* referee_chassis_tp_name,
+          const char* referee_launcher_tp_name,
+          const char* referee_sentry_tp_name)
+      : uart_(uart),
+        sem_(),
+        op_(sem_),  /* TODO:测延时 */
+        chassispack_topic_(referee_chassis_tp_name, sizeof(ChassisPack),
+                           nullptr, true),
+        launcherpack_topic_(referee_launcher_tp_name, sizeof(LauncherPack),
+                            nullptr, true),
+        sentrypack_topic_(referee_sentry_tp_name, sizeof(SentryPack), nullptr,
+                          true) {
     UNUSED(hw);
     UNUSED(app);
     uart_->SetConfig({baudrate, LibXR::UART::Parity::NO_PARITY, 8, 1});
