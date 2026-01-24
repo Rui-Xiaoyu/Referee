@@ -10,9 +10,18 @@ required_hardware:
 depends: []
 === END MANIFEST === */
 // clang-format on
+#include <cstdint>
+
 #include "app_framework.hpp"
+#include "crc.hpp"
 #include "libxr_def.hpp"
+#include "libxr_time.hpp"
+#include "libxr_type.hpp"
+#include "message.hpp"
+#include "semaphore.hpp"
 #include "thread.hpp"
+#include "timebase.hpp"
+#include "uart.hpp"
 
 /**
  * @brief 裁判系统类，用于接收、解包裁判系统
@@ -186,7 +195,7 @@ class Referee : public LibXR::Application {
    *
    */
   struct [[gnu::packed]] Header {
-    uint8_t sof;          /* 数据帧起始字节，固定值为 0xA5 */
+    uint8_t sof = 0xA5;   /* 数据帧起始字节，固定值为 0xA5 */
     uint16_t data_length; /* 数据帧中 data 的长度 */
     uint8_t seq;          /* 包序号 */
     uint8_t crc8;         /* 包头crc8校验 */
@@ -281,7 +290,7 @@ class Referee : public LibXR::Application {
     uint16_t remain_hp;                /* 机器人当前血量 */
     uint16_t max_hp;                   /* 机器人血量上限 */
     uint16_t shooter_cooling_value;    /* 机器人射击热量每秒冷却值 */
-    uint16_t shooter_heat_limit;       /*机器人射击热量上限*/
+    uint16_t shooter_heat_limit;       /* 机器人射击热量上限 */
     uint16_t chassis_power_limit;      /* 机器人底盘功率上限 */
     uint8_t power_gimbal_output : 1;   /* gimbal输出，0为无输出，1为24V输出 */
     uint8_t power_chassis_output : 1;  /* chassis输出，0为无输出，1为24V输出*/
@@ -483,7 +492,7 @@ class Referee : public LibXR::Application {
    *
    */
   struct [[gnu::packed]] RobotInteractionData {
-    uint16_t data_cmd_id;  /* 子内容ID,需为开放的子内容 ID */
+    CMDID data_cmd_id;     /* 子内容ID,需为开放的子内容 ID */
     uint16_t sender_id;    /*发送者 ID,需与自身 ID 匹配，ID 编号详见附录*/
     uint16_t receiver_id;  /*接收者 ID*/
     int8_t user_data[112]; /*内容数据段*/
@@ -704,17 +713,32 @@ class Referee : public LibXR::Application {
 
     uint8_t enemy_sentry_health; /*对方哨兵回血增益, 百分比*/
     uint16_t enemy_sentry_heat;  /* 对方哨兵射击热量冷却增益,直接值,单位/s */
-    uint8_t enemy_sentry_protection;         /*对方哨兵防御增益,百分比*/
-    uint8_t enemy_sentry_neg_protection;     /*对方哨兵负防御增益,百分比*/
-    uint16_t enemy_sentry_attact;            /*对方哨兵攻击增益,百分比*/
+    uint8_t enemy_sentry_protection;     /*对方哨兵防御增益,百分比*/
+    uint8_t enemy_sentry_neg_protection; /*对方哨兵负防御增益,百分比*/
+    uint16_t enemy_sentry_attact;        /*对方哨兵攻击增益,百分比*/
   };
 
   /**
    * @brief 0x0A06 对方干扰波密钥
    *
    */
-  struct [[gnu::packed]] RadarEnemyKey{
+  struct [[gnu::packed]] RadarEnemyKey {
     uint8_t ascii[6]; /*每个字节均为 ASCII 码编码的字母或数字*/
+  };
+
+  /**
+   * @brief 0x0120 哨兵自主决策指令
+   *
+   */
+  struct [[gnu::packed]] SentryDecisionData {
+    uint32_t confirm_resurrection : 1;    /* 哨兵机器人是否确认复活 */
+    uint32_t buy_resurrection : 1;        /* 哨兵机器人是否确认兑换立即复活 */
+    uint32_t buy_bullet_num : 11;         /* 哨兵将要兑换的发弹量值 */
+    uint32_t remote_buy_bullet_times : 4; /* 哨兵远程兑换发弹量的请求次数 */
+    uint32_t romote_buy_hp_times : 4;     /* 哨兵远程兑换血量的请求次数 */
+    uint32_t current_state : 2; /* 哨兵修改当前姿态指令,1进攻 2防御 3移动 */
+    uint32_t comfirm_mech : 1;  /*哨兵机器人是否确认使能量机关进入正在激活状态*/
+    uint32_t res : 8;           /* 保留位 */
   };
 
   /**
@@ -730,14 +754,14 @@ class Referee : public LibXR::Application {
    *
    * @note 不需要发包，只需要发命令码
    */
-  struct [[gnu::packed]] GetVideoTransChannel {};
-
-  struct [[gnu::packed]] InterStudentHeader {
-    CMDID cmd_id;
-    uint16_t id_sender;
-    uint16_t id_receiver;
+  struct [[gnu::packed]] GetVideoTransChannel {
+    /* TODO: 没看懂，等裁判系统 */
   };
 
+  /**
+   * @brief 传递的总结构体
+   *
+   */
   struct Data {
     Status status;                              /* 在线状态 */
     GameStatus game_status;                     /* 0x0001 */
@@ -769,40 +793,114 @@ class Referee : public LibXR::Application {
     CustomKeyMouseData custom_key_mouse_data;   /* 0x0306 */
   };
 
-  struct [[gnu::packed]] SentryDecisionData {
-    uint32_t confirm_resurrection : 1;
-    uint32_t buy_resurrection : 1;
-    uint32_t buy_bullet_num : 11;
-    uint32_t remote_buy_bullet_times : 4;
-    uint32_t romote_buy_hp_times : 4;
-    uint32_t res : 11;
+  /**
+   * @brief 发射模块需要的裁判系统数据
+   *
+   */
+  struct [[gnu::packed]] LauncherPack {
+    RobotStatus rs; /* 热量上限和冷却速率 */
   };
 
+  /**
+   * @brief 哨兵需要的包
+   *
+   */
   struct [[gnu::packed]] SentryPack {
-    Header frame_header; /* 0x0301 */
-    uint16_t cmd_id;
-    Referee::InterStudentHeader student_header; /* 含0x0120 */
-    uint32_t data_cmd;
-    uint16_t crc16;
+    /* TODO: 待更新 */
+    RobotStatus rs; /* 热量上限和冷却速率 */
   };
 
-  struct [[gnu::packed]] RadarPack {
-    Header frame_header;
-    uint16_t cmd_id;
-    Referee::InterStudentHeader student_header;
-    uint8_t radar_cmd;
-    uint16_t crc16;
+  /**
+   * @brief 底盘模块需要的包
+   *
+   */
+  struct [[gnu::packed]] ChassisPack {
+    RobotStatus rs; /* 等级和功率上限 */
   };
 
-  Referee(LibXR::HardwareContainer &hw, LibXR::ApplicationManager &app) {
+  /**
+   * @brief Construct a new Referee object
+   *
+   * @param hw
+   * @param app
+   * @param task_stack_depth_uart
+   * @param uart
+   * @param baudrate
+   */
+  Referee(LibXR::HardwareContainer& hw, LibXR::ApplicationManager& app,
+          uint32_t task_stack_depth_uart, LibXR::UART* uart, uint32_t baudrate)
+      : uart_(uart), sem_(), op_(sem_) {
     UNUSED(hw);
     UNUSED(app);
+    uart_->SetConfig({baudrate, LibXR::UART::Parity::NO_PARITY, 8, 1});
 
+    auto transmit_cb = [](bool in_isr) {
 
+    };
+
+    this->thread_.Create(this, ThreadFunc, "Referee", task_stack_depth_uart,
+                         LibXR::Thread::Priority::HIGH);
+  }
+
+  /**
+   * @brief 线程函数
+   *
+   */
+  static void ThreadFunc(Referee* ref) {
+    ref->uart_->read_port_->Reset();
+    while (1) {
+      ref->FindHeader();
+      ref->ParseData();
+      /* publish */
+    }
+  }
+
+  /**
+   * @brief 寻找包头的函数，含阻塞
+   *
+   */
+  void FindHeader() {
+    uint8_t byte = 0x00;
+    while (1) {
+      do {
+        /* 这样的写法主要是防编译器神秘warning */
+        this->uart_->Read({&byte, 1}, this->op_); /* op是阻塞的 */
+      } while (byte == 0xA5);
+      this->uart_->Read(
+          {reinterpret_cast<uint8_t*>(&header_) + 1, sizeof(Header) - 1},
+          this->op_);
+
+      if (LibXR::CRC8::Verify(reinterpret_cast<uint8_t*>(&this->header_),
+                              sizeof(Header))) {
+        break;
+      }
+    }
+  }
+
+  /**
+   * @brief 解析包数据的函数
+   *
+   * @return true
+   * @return false
+   */
+  bool ParseData() {
+    this->last_wake_up_ = LibXR::Timebase::GetMilliseconds();
+    return true;
   }
 
   void OnMonitor() override {}
 
  private:
+  /* 数据读取 */
+  LibXR::UART* uart_;
+  LibXR::Semaphore sem_;
+  LibXR::ReadOperation op_;
+
+  /* 协议/数据流 */
+  Header header_;
+  Data data_;
+
+  /* 线程相关 */
+  uint64_t last_wake_up_; /* ms */
   LibXR::Thread thread_;
 };
