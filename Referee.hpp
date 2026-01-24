@@ -16,7 +16,6 @@
 module_description: RM_Referee_2025
 constructor_args:
   - task_stack_depth_uart: 2048
-  - cmd_data_tp_name: "cmd_raw_data_"
   - uart: "uart_ref"
   - baudrate: 115200
   - referee_chassis_tp_name: "chassis_ref"
