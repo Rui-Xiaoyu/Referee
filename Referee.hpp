@@ -1221,7 +1221,6 @@ class Referee : public LibXR::Application {
   void Publish() {
     if (!this->last_parse_) {
       return;
-
     }
     this->cp_.rs = this->data_.robot_status;
     this->chassispack_topic_.Publish(this->cp_);
