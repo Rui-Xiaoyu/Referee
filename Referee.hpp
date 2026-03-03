@@ -25,9 +25,12 @@ required_hardware: dma uart
 depends: []
 === END MANIFEST === */
 // clang-format on
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
+#include "CMD.hpp"
 #include "app_framework.hpp"
 #include "crc.hpp"
 #include "libxr_def.hpp"
@@ -204,7 +207,145 @@ class Referee : public LibXR::Application {
    * @brief 键盘数据，来源于0x0304
    *
    */
-  enum class KeyBoard : uint16_t {};
+  enum class KeyBoard : uint16_t {
+    KEY_W = 1U << 0,
+    KEY_S = 1U << 1,
+    KEY_A = 1U << 2,
+    KEY_D = 1U << 3,
+    KEY_SHIFT = 1U << 4,
+    KEY_CTRL = 1U << 5,
+    KEY_Q = 1U << 6,
+    KEY_E = 1U << 7,
+    KEY_R = 1U << 8,
+    KEY_F = 1U << 9,
+    KEY_G = 1U << 10,
+    KEY_Z = 1U << 11,
+    KEY_X = 1U << 12,
+    KEY_C = 1U << 13,
+    KEY_V = 1U << 14,
+    KEY_B = 1U << 15,
+  };
+
+  /**
+   * @brief UI 删除操作类型，来源子内容ID 0x0100
+   *
+   */
+  enum class UIDeleteType : uint8_t {
+    UI_DELETE_NO_OP = 0,
+    UI_DELETE_LAYER = 1,
+    UI_DELETE_ALL = 2,
+  };
+
+  /**
+   * @brief UI 图形操作类型，来源子内容ID 0x0101
+   *
+   */
+  enum class UIFigureOp : uint8_t {
+    UI_OP_NO_OP = 0,
+    UI_OP_ADD = 1,
+    UI_OP_MODIFY = 2,
+    UI_OP_DELETE = 3,
+  };
+
+  /**
+   * @brief UI 图形类型，来源子内容ID 0x0101
+   *
+   */
+  enum class UIFigureType : uint8_t {
+    UI_TYPE_LINE = 0,
+    UI_TYPE_RECT = 1,
+    UI_TYPE_CIRCLE = 2,
+    UI_TYPE_ELLIPSE = 3,
+    UI_TYPE_ARC = 4,
+    UI_TYPE_FLOAT = 5,
+    UI_TYPE_INT = 6,
+    UI_TYPE_CHAR = 7,
+  };
+
+  /**
+   * @brief UI 图形颜色，来源子内容ID 0x0101
+   *
+   */
+  enum class UIColor : uint8_t {
+    UI_COLOR_TEAM = 0, /* 红/蓝，己方颜色 */
+    UI_COLOR_YELLOW = 1,
+    UI_COLOR_GREEN = 2,
+    UI_COLOR_ORANGE = 3,
+    UI_COLOR_PURPLE_RED = 4,
+    UI_COLOR_PINK = 5,
+    UI_COLOR_CYAN = 6,
+    UI_COLOR_BLACK = 7,
+    UI_COLOR_WHITE = 8,
+  };
+
+  /**
+   * @brief UI 图层删除包，来源子内容ID 0x0100
+   *
+   */
+  struct [[gnu::packed]] UILayerDelete {
+    uint8_t delete_type; /* @enum UIDeleteType */
+    uint8_t layer;       /* 0~9 */
+  };
+
+  /**
+   * @brief UI 单图形定义，来源子内容ID 0x0101
+   *
+   */
+  struct [[gnu::packed]] UIFigure {
+    uint8_t figure_name[3]; /* 图形名，作为索引 */
+    uint32_t operate_type : 3; /* @enum UIFigureOp */
+    uint32_t figure_type : 3;  /* @enum UIFigureType */
+    uint32_t layer : 4;        /* 图层号 0~9 */
+    uint32_t color : 4;        /* @enum UIColor */
+    uint32_t details_a : 9;
+    uint32_t details_b : 9;
+    uint32_t width : 10;
+    uint32_t start_x : 11;
+    uint32_t start_y : 11;
+    uint32_t details_c : 10;
+    uint32_t details_d : 11;
+    uint32_t details_e : 11;
+  };
+
+  /**
+   * @brief UI 双图形，来源子内容ID 0x0102
+   *
+   */
+  struct [[gnu::packed]] UIFigure2 {
+    UIFigure interaction_figure[2];
+  };
+
+  /**
+   * @brief UI 五图形，来源子内容ID 0x0103
+   *
+   */
+  struct [[gnu::packed]] UIFigure5 {
+    UIFigure interaction_figure[5];
+  };
+
+  /**
+   * @brief UI 七图形，来源子内容ID 0x0104
+   *
+   */
+  struct [[gnu::packed]] UIFigure7 {
+    UIFigure interaction_figure[7];
+  };
+
+  /**
+   * @brief UI 字符图形，来源子内容ID 0x0110
+   *
+   */
+  struct [[gnu::packed]] UICharacter {
+    UIFigure grapic_data_struct; /* 与图形定义一致，figure_type应为字符 */
+    uint8_t data[30];            /* ASCII/UTF-8 文本数据 */
+  };
+
+  static_assert(sizeof(UILayerDelete) == 2, "UI layer delete size mismatch");
+  static_assert(sizeof(UIFigure) == 15, "UI figure size mismatch");
+  static_assert(sizeof(UIFigure2) == 30, "UI figure2 size mismatch");
+  static_assert(sizeof(UIFigure5) == 75, "UI figure5 size mismatch");
+  static_assert(sizeof(UIFigure7) == 105, "UI figure7 size mismatch");
+  static_assert(sizeof(UICharacter) == 45, "UI character size mismatch");
 
   /**
    * @brief 裁判系统包头
@@ -758,20 +899,35 @@ class Referee : public LibXR::Application {
   };
 
   /**
+   * @brief 0x0121 雷达自主决策指令
+   *
+   */
+  struct [[gnu::packed]] RadarDecisionData {
+    uint8_t radar_cmd;    /* 雷达是否确认触发双倍易伤（单调+1） */
+    uint8_t password_cmd; /* byte1：1改密钥；2提交破解密钥验证 */
+    uint8_t password_1;
+    uint8_t password_2;
+    uint8_t password_3;
+    uint8_t password_4;
+    uint8_t password_5;
+    uint8_t password_6;
+  };
+
+  /**
    * @brief 0x0F01 设置图传出图信道，应答
    *
    */
   struct [[gnu::packed]] SetVideoTransChannel {
-    uint8_t set_channel : 1; /*设置出图信道并接收设置反馈*/
+    uint8_t value; /* 请求:1~6; 应答:0成功/1忙/2参数错误 */
   };
 
   /**
-   * @brief 0x0F02 设置图传出图信道
+   * @brief 0x0F02 查询图传出图信道
    *
-   * @note 不需要发包，只需要发命令码
+   * @note 查询请求不需要数据段；应答为1字节当前信道
    */
   struct [[gnu::packed]] GetVideoTransChannel {
-    /* TODO: 没看懂，等裁判系统 */
+    uint8_t channel; /* 0表示未设置；1~6为当前信道 */
   };
 
   /**
@@ -816,6 +972,7 @@ class Referee : public LibXR::Application {
     RadarRobotBuff radar_robot_buff;            /* 0x0A05 */
     RadarEnemyKey radar_enemy_key;              /* 0x0A06 */
     SentryDecisionData sentry_dec_data;         /* 0x0120 */
+    RadarDecisionData radar_dec_data;           /* 0x0121 */
     SetVideoTransChannel set_vid_trans_ch;      /* 0x0F01 */
     GetVideoTransChannel get_vid_trans_ch;      /* 0x0F02 */
   };
@@ -858,10 +1015,13 @@ class Referee : public LibXR::Application {
           uint32_t task_stack_depth_uart, const char* uart, uint32_t baudrate,
           const char* referee_chassis_tp_name,
           const char* referee_launcher_tp_name,
-          const char* referee_sentry_tp_name)
+          const char* referee_sentry_tp_name, CMD* cmd = nullptr)
       : uart_(hw.Find<LibXR::UART>(uart)),
-        sem_(),
-        op_(sem_), /* TODO:测延时 */
+        sem_(0),
+        op_(sem_, 5000), /* TODO:测延时 */
+        sem_tx_(),
+        tx_op_(sem_tx_, 5000),
+        cmd_(cmd),
         chassispack_topic_(referee_chassis_tp_name, sizeof(ChassisPack),
                            nullptr, true),
         launcherpack_topic_(referee_launcher_tp_name, sizeof(LauncherPack),
@@ -876,6 +1036,136 @@ class Referee : public LibXR::Application {
                          LibXR::Thread::Priority::HIGH);
   }
 
+  void BindCMD(CMD& cmd) { cmd_ = &cmd; }
+
+  ErrorCode SendFrame(CommandID cmd_id, const void* payload, uint16_t PAYLOAD_LEN) {
+    constexpr size_t HEADER_SIZE = sizeof(Header);
+    constexpr size_t CMD_ID_SIZE = sizeof(uint16_t);
+    constexpr size_t FRAME_TAIL_SIZE = sizeof(uint16_t);
+    const size_t TOTAL_SIZE =
+        HEADER_SIZE + CMD_ID_SIZE + PAYLOAD_LEN + FRAME_TAIL_SIZE;
+
+    if (TOTAL_SIZE > sizeof(tx_buf_)) {
+      return ErrorCode::ARG_ERR;
+    }
+
+    Header header{};
+    header.sof = 0xA5;
+    header.data_length = PAYLOAD_LEN;
+    header.seq = tx_seq_++;
+    header.crc8 = LibXR::CRC8::Calculate(&header, sizeof(Header) - 1);
+
+    size_t offset = 0;
+    LibXR::Memory::FastCopy(&tx_buf_[offset], &header, sizeof(header));
+    offset += sizeof(header);
+
+    // const uint16_t cmd_u16 = static_cast<uint16_t>(cmd_id);
+    tx_buf_[offset++] =
+        static_cast<uint8_t>(static_cast<uint16_t>(cmd_id) & 0xFF);
+    tx_buf_[offset++] =
+        static_cast<uint8_t>((static_cast<uint16_t>(cmd_id) >> 8) & 0xFF);
+
+    if (PAYLOAD_LEN > 0 && payload != nullptr) {
+      LibXR::Memory::FastCopy(&tx_buf_[offset], payload, PAYLOAD_LEN);
+      offset += PAYLOAD_LEN;
+    }
+
+    const uint16_t CRC16 = LibXR::CRC16::Calculate(tx_buf_, offset);
+    tx_buf_[offset++] = static_cast<uint8_t>(CRC16 & 0xFF);
+    tx_buf_[offset++] = static_cast<uint8_t>((CRC16 >> 8) & 0xFF);
+
+    return uart_->Write({tx_buf_, offset}, tx_op_);
+  }
+
+  template <typename PayloadType>
+  ErrorCode SendFrame(CommandID cmd_id, const PayloadType& payload) {
+    return SendFrame(cmd_id, &payload, static_cast<uint16_t>(sizeof(PayloadType)));
+  }
+
+  template <typename PayloadType>
+  ErrorCode SendStudentCmd(CMDID data_cmd_id, uint16_t sender_id,
+                           uint16_t receiver_id, const PayloadType& payload) {
+    struct [[gnu::packed]] {
+      uint16_t data_cmd_id;
+      uint16_t sender_id;
+      uint16_t receiver_id;
+      PayloadType payload;
+    } interaction_pack{};
+    interaction_pack.data_cmd_id = static_cast<uint16_t>(data_cmd_id);
+    interaction_pack.sender_id = sender_id;
+    interaction_pack.receiver_id = receiver_id;
+    interaction_pack.payload = payload;
+    return SendFrame(CommandID::REF_CMD_ID_INTER_STUDENT, interaction_pack);
+  }
+
+  ErrorCode SendUILayerDelete(uint16_t sender_id, uint16_t receiver_id,
+                              const UILayerDelete& payload) {
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DEL, sender_id, receiver_id,
+                          payload);
+  }
+
+  ErrorCode SendUIFigure(uint16_t sender_id, uint16_t receiver_id,
+                         const UIFigure& payload) {
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW1, sender_id, receiver_id,
+                          payload);
+  }
+
+  ErrorCode SendUIFigure2(uint16_t sender_id, uint16_t receiver_id,
+                          const UIFigure2& payload) {
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW2, sender_id, receiver_id,
+                          payload);
+  }
+
+  ErrorCode SendUIFigure5(uint16_t sender_id, uint16_t receiver_id,
+                          const UIFigure5& payload) {
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW5, sender_id, receiver_id,
+                          payload);
+  }
+
+  ErrorCode SendUIFigure7(uint16_t sender_id, uint16_t receiver_id,
+                          const UIFigure7& payload) {
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW7, sender_id, receiver_id,
+                          payload);
+  }
+
+  ErrorCode SendUICharacter(uint16_t sender_id, uint16_t receiver_id,
+                            const UICharacter& payload) {
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_STR, sender_id, receiver_id,
+                          payload);
+  }
+
+  ErrorCode SendSentryDecision(const SentryDecisionData& payload) {
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_SENTRY_CMD,
+                          data_.robot_status.robot_id,
+                          static_cast<uint16_t>(ClientID::REF_CL_REFEREE_SERVER),
+                          payload);
+  }
+
+  ErrorCode SendRadarDecision(const RadarDecisionData& payload) {
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_RADAR_CMD,
+                          data_.robot_status.robot_id,
+                          static_cast<uint16_t>(ClientID::REF_CL_REFEREE_SERVER),
+                          payload);
+  }
+
+  ErrorCode SendSetVideoTransChannel(uint8_t channel) {
+    SetVideoTransChannel payload{};
+    payload.value = channel;
+    return SendFrame(CommandID::REF_CMD_ID_SET_VIDEO_TRANS_CH, payload);
+  }
+
+  ErrorCode SendQueryVideoTransChannel() {
+    return SendFrame(CommandID::REF_CMD_ID_GET_VIDEO_TRANS_CH, nullptr, 0);
+  }
+
+  ErrorCode SendCustomDataToController(const CustomData1& payload) {
+    return SendFrame(CommandID::REF_CMD_ID_CUSTOM_RECV_DATA, payload);
+  }
+
+  ErrorCode SendCustomDataToController(const CustomData2& payload) {
+    return SendFrame(CommandID::REF_CMD_ID_DATA_TO_CUSTOM_CLIENT, payload);
+  }
+
   /**
    * @brief 线程函数
    *
@@ -886,6 +1176,8 @@ class Referee : public LibXR::Application {
       ref->FindHeader();
       ref->last_parse_ = ref->ParseData();
       ref->Publish();
+      // ref->uart_->Write(0b01010101, ref->op_);
+      // LibXR::Thread::Sleep(10);
     }
   }
 
@@ -894,21 +1186,25 @@ class Referee : public LibXR::Application {
    *
    */
   void FindHeader() {
-    this->data_.status = Status::OFFLINE; /* 假设离线 */
-    uint8_t byte = 0x00;
     while (1) {
-      do {
-        /* 这样的写法主要是防编译器神秘warning */
-        this->uart_->Read({&byte, 1}, this->op_);
-      } while (byte == 0xA5);
-      /* header的head不会被修改 */
-      this->uart_->Read({reinterpret_cast<uint8_t*>(&this->pack_.header_) + 1,
-                         sizeof(Header) - 1},
-                        this->op_);
+      /* 防编译器warning */
+      if(this->uart_->Read({&this->byte_, 1}, this->op_) == ErrorCode::OK){
+        if (this->byte_ != 0xA5) {
+          continue;
+        }
+        this->pack_.header_.sof = this->byte_;
+        this->uart_->Read({reinterpret_cast<uint8_t*>(&this->pack_.header_) + 1,
+                           sizeof(Header) - 1},
+                          this->op_);
 
-      if (LibXR::CRC8::Verify(reinterpret_cast<uint8_t*>(&this->pack_.header_),
-                              sizeof(Header))) {
-        break;
+        if (LibXR::CRC8::Verify(
+                reinterpret_cast<uint8_t*>(&this->pack_.header_),
+                sizeof(Header))) {
+          this->data_.status = Status::RUNNING;
+          break;
+        }
+      }else{
+        this->data_.status = Status::OFFLINE;
       }
     }
   }
@@ -920,90 +1216,116 @@ class Referee : public LibXR::Application {
    * @return false
    */
   bool ParseData() {
-    if (this->uart_->Read(
-            {&this->pack_.buf_,
-             static_cast<size_t>(this->pack_.header_.data_length) + 3},
-            this->op_) != ErrorCode::OK) {
+    const uint16_t PAYLOAD_LEN = this->pack_.header_.data_length;
+    const size_t BYTES_AFTER_HEADER =
+        sizeof(uint16_t) + PAYLOAD_LEN + sizeof(uint16_t);
+
+    if (BYTES_AFTER_HEADER > sizeof(this->pack_.buf_)) {
       return false;
     }
 
-    if (!LibXR::CRC16::Verify(&this->pack_,
-                              this->pack_.header_.data_length + 7)) {
+    if (this->uart_->Read({this->pack_.buf_, BYTES_AFTER_HEADER}, this->op_) !=
+        ErrorCode::OK) {
       return false;
     }
+
+    if (!LibXR::CRC16::Verify(&this->pack_, sizeof(Header) + BYTES_AFTER_HEADER)) {
+      return false;
+    }
+
+    const uint16_t CMD_ID = static_cast<uint16_t>(this->pack_.buf_[0]) |
+                            (static_cast<uint16_t>(this->pack_.buf_[1]) << 8);
+    const uint8_t* payload = &this->pack_.buf_[2];
+
+    const auto COPY_PAYLOAD = [payload, PAYLOAD_LEN](auto& dst) -> bool {
+      if (PAYLOAD_LEN < sizeof(dst)) {
+        return false;
+      }
+      LibXR::Memory::FastCopy(&dst, payload, sizeof(dst));
+      return true;
+    };
 
     this->data_.status = Status::RUNNING; /* 更新状态 */
     this->last_wake_up_ = LibXR::Timebase::GetMilliseconds();
 
-    switch (static_cast<CommandID>(this->pack_.buf_[0] << 8 |
-                                   this->pack_.buf_[1])) {
+    switch (static_cast<CommandID>(CMD_ID)) {
       case CommandID::REF_CMD_ID_GAME_STATUS: {
         /* 0x0001, 比赛状态数据 */
-        LibXR::Memory::FastCopy(&this->data_.game_status, &this->pack_.buf_[2],
-                                sizeof(GameStatus));
+        if (!COPY_PAYLOAD(this->data_.game_status)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_GAME_RESULT: {
         /* 0x0002, 比赛结果数据 */
-        LibXR::Memory::FastCopy(&this->data_.game_result, &this->pack_.buf_[2],
-                                sizeof(GameResult));
+        if (!COPY_PAYLOAD(this->data_.game_result)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_GAME_ROBOT_HP: {
         /* 0x0003, 机器人血量数据 */
-        LibXR::Memory::FastCopy(&this->data_.game_robot_hp,
-                                &this->pack_.buf_[2], sizeof(RobotHP));
+        if (!COPY_PAYLOAD(this->data_.game_robot_hp)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_FIELD_EVENTS: {
         /* 0x0101, 场地事件数据 */
-        LibXR::Memory::FastCopy(&this->data_.field_event, &this->pack_.buf_[2],
-                                sizeof(FieldEvents));
+        if (!COPY_PAYLOAD(this->data_.field_event)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_WARNING: {
         /* 0x0104, 裁判警告数据 */
-        LibXR::Memory::FastCopy(&this->data_.warning, &this->pack_.buf_[2],
-                                sizeof(Warning));
+        if (!COPY_PAYLOAD(this->data_.warning)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_DART_COUNTDOWN: {
         /* 0x0105, 飞镖发射相关数据 */
-        LibXR::Memory::FastCopy(&this->data_.dart_countdown,
-                                &this->pack_.buf_[2], sizeof(DartCountdown));
+        if (!COPY_PAYLOAD(this->data_.dart_countdown)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_ROBOT_STATUS: {
         /* 0x0201, 机器人性能体系数据 */
-        LibXR::Memory::FastCopy(&this->data_.robot_status, &this->pack_.buf_[2],
-                                sizeof(RobotStatus));
+        if (!COPY_PAYLOAD(this->data_.robot_status)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_POWER_HEAT_DATA: {
         /* 0x0202, 实时底盘缓冲能量和射击热量 */
-        LibXR::Memory::FastCopy(&this->data_.power_heat, &this->pack_.buf_[2],
-                                sizeof(PowerHeat));
+        if (!COPY_PAYLOAD(this->data_.power_heat)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_ROBOT_POS: {
         /* 0x0203, 机器人位置数据 */
-        LibXR::Memory::FastCopy(&this->data_.robot_pos, &this->pack_.buf_[2],
-                                sizeof(RobotPOS));
+        if (!COPY_PAYLOAD(this->data_.robot_pos)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_ROBOT_BUFF: {
         /* 0x0204, 机器人增益和底盘能量数据 */
-        LibXR::Memory::FastCopy(&this->data_.robot_buff, &this->pack_.buf_[2],
-                                sizeof(RobotBuff));
+        if (!COPY_PAYLOAD(this->data_.robot_buff)) {
+          return false;
+        }
         break;
       }
 
@@ -1014,195 +1336,227 @@ class Referee : public LibXR::Application {
 
       case CommandID::REF_CMD_ID_ROBOT_DMG: {
         /* 0x0206, 伤害状态数据 */
-        LibXR::Memory::FastCopy(&this->data_.robot_damage, &this->pack_.buf_[2],
-                                sizeof(RobotDamage));
+        if (!COPY_PAYLOAD(this->data_.robot_damage)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_LAUNCHER_DATA: {
         /* 0x0207, 实时射击数据 */
-        LibXR::Memory::FastCopy(&this->data_.launcher_data,
-                                &this->pack_.buf_[2], sizeof(LauncherData));
+        if (!COPY_PAYLOAD(this->data_.launcher_data)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_BULLET_REMAINING: {
         /* 0x0208, 允许发弹量 */
-        LibXR::Memory::FastCopy(&this->data_.bullet_remain,
-                                &this->pack_.buf_[2], sizeof(BulletRemain));
+        if (!COPY_PAYLOAD(this->data_.bullet_remain)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_RFID: {
         /* 0x0209, 机器人 RFID 模块状态 */
-        LibXR::Memory::FastCopy(&this->data_.rfid, &this->pack_.buf_[2],
-                                sizeof(RFID));
+        if (!COPY_PAYLOAD(this->data_.rfid)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_DART_CLIENT: {
         /* 0x020A, 飞镖选手端指令数据 */
-        LibXR::Memory::FastCopy(&this->data_.dart_client, &this->pack_.buf_[2],
-                                sizeof(DartClient));
+        if (!COPY_PAYLOAD(this->data_.dart_client)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_ROBOT_POS_TO_SENTRY: {
         /* 0x020B, 地面机器人位置数据 -> 哨兵 */
-        LibXR::Memory::FastCopy(&this->data_.sentry_pos, &this->pack_.buf_[2],
-                                sizeof(RobotPosForSentry));
+        if (!COPY_PAYLOAD(this->data_.sentry_pos)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_RADAR_MARK: {
         /* 0x020C, 雷达标记进度数据 */
-        LibXR::Memory::FastCopy(&this->data_.radar_mark_progress,
-                                &this->pack_.buf_[2],
-                                sizeof(RadarMarkProgress));
+        if (!COPY_PAYLOAD(this->data_.radar_mark_progress)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_SENTRY_DECISION: {
         /* 0x020D, 哨兵自主决策相关信息同步 */
-        LibXR::Memory::FastCopy(&this->data_.sentry_decision,
-                                &this->pack_.buf_[2], sizeof(SentryInfo));
+        if (!COPY_PAYLOAD(this->data_.sentry_decision)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_RADAR_DECISION: {
         /* 0x020E, 雷达自主决策相关信息同步 */
-        LibXR::Memory::FastCopy(&this->data_.radar_decision,
-                                &this->pack_.buf_[2], sizeof(RadarInfo));
+        if (!COPY_PAYLOAD(this->data_.radar_decision)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_INTER_STUDENT: {
         /* 0x0301, 机器人交互数据 */
-        LibXR::Memory::FastCopy(&this->data_.robot_ineraction_data,
-                                &this->pack_.buf_[2],
-                                sizeof(RobotInteractionData));
+        if (PAYLOAD_LEN < 6) {
+          return false;
+        }
+        std::memset(this->data_.robot_ineraction_data.user_data, 0,
+                    sizeof(this->data_.robot_ineraction_data.user_data));
+        LibXR::Memory::FastCopy(&this->data_.robot_ineraction_data, payload, 6);
+        const size_t USER_DATA_LEN = std::min<size_t>(
+            PAYLOAD_LEN - 6, sizeof(this->data_.robot_ineraction_data.user_data));
+        if (USER_DATA_LEN > 0) {
+          LibXR::Memory::FastCopy(this->data_.robot_ineraction_data.user_data,
+                                  payload + 6, USER_DATA_LEN);
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_INTER_STUDENT_CUSTOM: {
         /* 0x0302, 自定义控制器和机器人（图传） */
-        LibXR::Memory::FastCopy(&this->data_.custom_controller,
-                                &this->pack_.buf_[2], sizeof(CustomController));
+        if (!COPY_PAYLOAD(this->data_.custom_controller)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_CLIENT_MAP: {
         /* 0x0303, 选手端小地图交互数据 */
-        LibXR::Memory::FastCopy(&this->data_.client_map, &this->pack_.buf_[2],
-                                sizeof(ClientMap));
+        if (!COPY_PAYLOAD(this->data_.client_map)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_KEYBOARD_MOUSE: {
         /* 0x0304, 键鼠遥控数据 */
-        LibXR::Memory::FastCopy(&this->data_.keyboard_mouse,
-                                &this->pack_.buf_[2], sizeof(KeyboardMouse));
+        if (!COPY_PAYLOAD(this->data_.keyboard_mouse)) {
+          return false;
+        }
+        FeedVideoLinkRemoteToCMD(this->data_.keyboard_mouse);
         break;
       }
 
       case CommandID::REF_CMD_ID_MAP_ROBOT_DATA: {
         /* 0x0305, 小地图接收雷达数据 */
-        LibXR::Memory::FastCopy(&this->data_.map_robot_data,
-                                &this->pack_.buf_[2], sizeof(MapRobotData));
+        if (!COPY_PAYLOAD(this->data_.map_robot_data)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_CUSTOM_KEYBOARD_MOUSE: {
         /* 0x0306, 自定义控制器交互（键鼠模拟） */
-        LibXR::Memory::FastCopy(&this->data_.custom_key_mouse_data,
-                                &this->pack_.buf_[2],
-                                sizeof(CustomKeyMouseData));
+        if (!COPY_PAYLOAD(this->data_.custom_key_mouse_data)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_SENTRY_POS_DATA: {
         /* 0x0307, 小地图接收路径数据 */
-        LibXR::Memory::FastCopy(&this->data_.sentry_postion,
-                                &this->pack_.buf_[2], sizeof(SentryPosition));
+        if (!COPY_PAYLOAD(this->data_.sentry_postion)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_ROBOT_POS_DATA: {
         /* 0x0308, 选手端小地图接受机器人消息 */
-        LibXR::Memory::FastCopy(&this->data_.robot_position,
-                                &this->pack_.buf_[2], sizeof(RobotPosition));
+        if (!COPY_PAYLOAD(this->data_.robot_position)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_CUSTOM_RECV_DATA: {
         /* 0x0309, 自定义控制器收包 */
-        LibXR::Memory::FastCopy(&this->data_.custom_data1, &this->pack_.buf_[2],
-                                sizeof(CustomData1));
+        if (!COPY_PAYLOAD(this->data_.custom_data1)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_DATA_TO_CUSTOM_CLIENT: {
         /* 0x0310, 自定义客户端数据 */
-        LibXR::Memory::FastCopy(&this->data_.custom_data2, &this->pack_.buf_[2],
-                                sizeof(CustomData2));
+        if (!COPY_PAYLOAD(this->data_.custom_data2)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_SET_VIDEO_TRANS_CH: {
         /* 0x0F01, 设置图传出图信道 (应答) */
-        LibXR::Memory::FastCopy(&this->data_.set_vid_trans_ch,
-                                &this->pack_.buf_[2],
-                                sizeof(SetVideoTransChannel));
+        if (!COPY_PAYLOAD(this->data_.set_vid_trans_ch)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_GET_VIDEO_TRANS_CH: {
         /* 0x0F02, 查询当前出图信道 (应答) */
-        /* TODO */
+        if (!COPY_PAYLOAD(this->data_.get_vid_trans_ch)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_RADAR_ENEMY_POS: {
         /* 0x0A01, 对方机器人的位置坐标 */
-        LibXR::Memory::FastCopy(&this->data_.radar_enemy_robot_pos,
-                                &this->pack_.buf_[2],
-                                sizeof(RadarEnemyRobotPos));
+        if (!COPY_PAYLOAD(this->data_.radar_enemy_robot_pos)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_RADAR_ENEMY_HP: {
         /* 0x0A02, 对方机器人的血量信息 */
-        LibXR::Memory::FastCopy(&this->data_.radar_enemy_robot_hp,
-                                &this->pack_.buf_[2],
-                                sizeof(RadarEnemyRobotHP));
+        if (!COPY_PAYLOAD(this->data_.radar_enemy_robot_hp)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_RADAR_ENEMY_BULLET: {
         /* 0x0A03, 对方剩余发弹量 */
-        LibXR::Memory::FastCopy(&this->data_.radar_enemy_bullet,
-                                &this->pack_.buf_[2], sizeof(RadarEnemyBullet));
+        if (!COPY_PAYLOAD(this->data_.radar_enemy_bullet)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_RADAR_ENEMY_INFO: {
         /* 0x0A04, 对方宏观状态信息 */
-        LibXR::Memory::FastCopy(&this->data_.radar_enemy_state,
-                                &this->pack_.buf_[2], sizeof(RadarEnemyState));
+        if (!COPY_PAYLOAD(this->data_.radar_enemy_state)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_RADAR_ENEMY_BUFF: {
         /* 0x0A05, 对方增益效果 */
-        LibXR::Memory::FastCopy(&this->data_.radar_robot_buff,
-                                &this->pack_.buf_[2], sizeof(RadarRobotBuff));
+        if (!COPY_PAYLOAD(this->data_.radar_robot_buff)) {
+          return false;
+        }
         break;
       }
 
       case CommandID::REF_CMD_ID_RADAR_ENEMY_KEY: {
         /* 0x0A06, 对方干扰波密钥 */
-        LibXR::Memory::FastCopy(&this->data_.radar_enemy_key,
-                                &this->pack_.buf_[2], sizeof(RadarEnemyKey));
+        if (!COPY_PAYLOAD(this->data_.radar_enemy_key)) {
+          return false;
+        }
         break;
       }
 
@@ -1212,6 +1566,49 @@ class Referee : public LibXR::Application {
       }
     }
     return true;
+  }
+
+  /**
+   * @brief 把图传链路的遥控数据传给CMD
+   *
+   * @param rc
+   */
+  void FeedVideoLinkRemoteToCMD(const KeyboardMouse& rc) {
+    if (cmd_ == nullptr) {
+      return;
+    }
+
+    constexpr float MOUSE_SCALER = 1000.0f / 32768.0f;
+    CMD::Data cmd_data{};
+
+    const uint16_t KEY = rc.keyboard_value;
+    if (KEY & static_cast<uint16_t>(KeyBoard::KEY_A)) {
+      cmd_data.chassis.x -= 0.5f;
+    }
+    if (KEY & static_cast<uint16_t>(KeyBoard::KEY_D)) {
+      cmd_data.chassis.x += 0.5f;
+    }
+    if (KEY & static_cast<uint16_t>(KeyBoard::KEY_S)) {
+      cmd_data.chassis.y -= 0.5f;
+    }
+    if (KEY & static_cast<uint16_t>(KeyBoard::KEY_W)) {
+      cmd_data.chassis.y += 0.5f;
+    }
+    if (KEY & static_cast<uint16_t>(KeyBoard::KEY_SHIFT)) {
+      cmd_data.chassis.x *= 2.0f;
+      cmd_data.chassis.y *= 2.0f;
+    }
+    cmd_data.chassis.z = 0.0f;
+
+    cmd_data.gimbal.pit = -static_cast<float>(rc.mouse_y) * MOUSE_SCALER;
+    cmd_data.gimbal.yaw = -static_cast<float>(rc.mouse_x) * MOUSE_SCALER;
+    cmd_data.gimbal.rol = 0.0f;
+
+    cmd_data.launcher.isfire = (rc.button_l != 0);
+    cmd_data.chassis_online = true;
+    cmd_data.gimbal_online = true;
+    cmd_data.ctrl_source = CMD::ControlSource::CTRL_SOURCE_RC;
+    cmd_->FeedRC(cmd_data);
   }
 
   /**
@@ -1237,8 +1634,14 @@ class Referee : public LibXR::Application {
   LibXR::UART* uart_;
   LibXR::Semaphore sem_;
   LibXR::ReadOperation op_;
+  LibXR::Semaphore sem_tx_;
+  LibXR::WriteOperation tx_op_;
+  CMD* cmd_;
+  uint8_t tx_buf_[256]{};
+  uint8_t tx_seq_ = 0;
+  uint8_t byte_ = 0;
 
-  /* 协议/数据流 */
+  /* 协议,数据流 */
   struct [[gnu::packed]] {
     Header header_;
     uint8_t buf_[251]; /* 缓冲区，对齐256 */
@@ -1247,9 +1650,9 @@ class Referee : public LibXR::Application {
   LibXR::Topic chassispack_topic_;
   ChassisPack cp_;  /* 发给底盘的数据包缓冲 */
   LibXR::Topic launcherpack_topic_;
-  ChassisPack lp_; /* 发给发射的数据包缓冲 */
+  LauncherPack lp_; /* 发给发射的数据包缓冲 */
   LibXR::Topic sentrypack_topic_;
-  ChassisPack sp_; /* 发给哨兵的数据包缓冲 */
+  SentryPack sp_; /* 发给哨兵的数据包缓冲 */
   bool last_parse_; /* 上一次解包是否成功 */
 
   /* 线程相关 */
