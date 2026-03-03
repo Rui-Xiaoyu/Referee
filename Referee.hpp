@@ -292,7 +292,7 @@ class Referee : public LibXR::Application {
    *
    */
   struct [[gnu::packed]] UIFigure {
-    uint8_t figure_name[3]; /* 图形名，作为索引 */
+    uint8_t figure_name[3];    /* 图形名，作为索引 */
     uint32_t operate_type : 3; /* @enum UIFigureOp */
     uint32_t figure_type : 3;  /* @enum UIFigureType */
     uint32_t layer : 4;        /* 图层号 0~9 */
@@ -1038,7 +1038,8 @@ class Referee : public LibXR::Application {
 
   void BindCMD(CMD& cmd) { cmd_ = &cmd; }
 
-  ErrorCode SendFrame(CommandID cmd_id, const void* payload, uint16_t PAYLOAD_LEN) {
+  ErrorCode SendFrame(CommandID cmd_id, const void* payload,
+                      uint16_t PAYLOAD_LEN) {
     constexpr size_t HEADER_SIZE = sizeof(Header);
     constexpr size_t CMD_ID_SIZE = sizeof(uint16_t);
     constexpr size_t FRAME_TAIL_SIZE = sizeof(uint16_t);
@@ -1079,7 +1080,8 @@ class Referee : public LibXR::Application {
 
   template <typename PayloadType>
   ErrorCode SendFrame(CommandID cmd_id, const PayloadType& payload) {
-    return SendFrame(cmd_id, &payload, static_cast<uint16_t>(sizeof(PayloadType)));
+    return SendFrame(cmd_id, &payload,
+                     static_cast<uint16_t>(sizeof(PayloadType)));
   }
 
   template <typename PayloadType>
@@ -1100,52 +1102,50 @@ class Referee : public LibXR::Application {
 
   ErrorCode SendUILayerDelete(uint16_t sender_id, uint16_t receiver_id,
                               const UILayerDelete& payload) {
-    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DEL, sender_id, receiver_id,
-                          payload);
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DEL, sender_id,
+                          receiver_id, payload);
   }
 
   ErrorCode SendUIFigure(uint16_t sender_id, uint16_t receiver_id,
                          const UIFigure& payload) {
-    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW1, sender_id, receiver_id,
-                          payload);
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW1, sender_id,
+                          receiver_id, payload);
   }
 
   ErrorCode SendUIFigure2(uint16_t sender_id, uint16_t receiver_id,
                           const UIFigure2& payload) {
-    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW2, sender_id, receiver_id,
-                          payload);
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW2, sender_id,
+                          receiver_id, payload);
   }
 
   ErrorCode SendUIFigure5(uint16_t sender_id, uint16_t receiver_id,
                           const UIFigure5& payload) {
-    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW5, sender_id, receiver_id,
-                          payload);
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW5, sender_id,
+                          receiver_id, payload);
   }
 
   ErrorCode SendUIFigure7(uint16_t sender_id, uint16_t receiver_id,
                           const UIFigure7& payload) {
-    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW7, sender_id, receiver_id,
-                          payload);
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_DRAW7, sender_id,
+                          receiver_id, payload);
   }
 
   ErrorCode SendUICharacter(uint16_t sender_id, uint16_t receiver_id,
                             const UICharacter& payload) {
-    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_STR, sender_id, receiver_id,
-                          payload);
+    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_UI_STR, sender_id,
+                          receiver_id, payload);
   }
 
   ErrorCode SendSentryDecision(const SentryDecisionData& payload) {
-    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_SENTRY_CMD,
-                          data_.robot_status.robot_id,
-                          static_cast<uint16_t>(ClientID::REF_CL_REFEREE_SERVER),
-                          payload);
+    return SendStudentCmd(
+        CMDID::REF_STDNT_CMD_ID_SENTRY_CMD, data_.robot_status.robot_id,
+        static_cast<uint16_t>(ClientID::REF_CL_REFEREE_SERVER), payload);
   }
 
   ErrorCode SendRadarDecision(const RadarDecisionData& payload) {
-    return SendStudentCmd(CMDID::REF_STDNT_CMD_ID_RADAR_CMD,
-                          data_.robot_status.robot_id,
-                          static_cast<uint16_t>(ClientID::REF_CL_REFEREE_SERVER),
-                          payload);
+    return SendStudentCmd(
+        CMDID::REF_STDNT_CMD_ID_RADAR_CMD, data_.robot_status.robot_id,
+        static_cast<uint16_t>(ClientID::REF_CL_REFEREE_SERVER), payload);
   }
 
   ErrorCode SendSetVideoTransChannel(uint8_t channel) {
@@ -1188,7 +1188,7 @@ class Referee : public LibXR::Application {
   void FindHeader() {
     while (1) {
       /* 防编译器warning */
-      if(this->uart_->Read({&this->byte_, 1}, this->op_) == ErrorCode::OK){
+      if (this->uart_->Read({&this->byte_, 1}, this->op_) == ErrorCode::OK) {
         if (this->byte_ != 0xA5) {
           continue;
         }
@@ -1203,7 +1203,7 @@ class Referee : public LibXR::Application {
           this->data_.status = Status::RUNNING;
           break;
         }
-      }else{
+      } else {
         this->data_.status = Status::OFFLINE;
       }
     }
@@ -1229,7 +1229,8 @@ class Referee : public LibXR::Application {
       return false;
     }
 
-    if (!LibXR::CRC16::Verify(&this->pack_, sizeof(Header) + BYTES_AFTER_HEADER)) {
+    if (!LibXR::CRC16::Verify(&this->pack_,
+                              sizeof(Header) + BYTES_AFTER_HEADER)) {
       return false;
     }
 
@@ -1415,7 +1416,8 @@ class Referee : public LibXR::Application {
                     sizeof(this->data_.robot_ineraction_data.user_data));
         LibXR::Memory::FastCopy(&this->data_.robot_ineraction_data, payload, 6);
         const size_t USER_DATA_LEN = std::min<size_t>(
-            PAYLOAD_LEN - 6, sizeof(this->data_.robot_ineraction_data.user_data));
+            PAYLOAD_LEN - 6,
+            sizeof(this->data_.robot_ineraction_data.user_data));
         if (USER_DATA_LEN > 0) {
           LibXR::Memory::FastCopy(this->data_.robot_ineraction_data.user_data,
                                   payload + 6, USER_DATA_LEN);
@@ -1648,11 +1650,11 @@ class Referee : public LibXR::Application {
   } pack_;
   Data data_; /* 数据包本体 */
   LibXR::Topic chassispack_topic_;
-  ChassisPack cp_;  /* 发给底盘的数据包缓冲 */
+  ChassisPack cp_; /* 发给底盘的数据包缓冲 */
   LibXR::Topic launcherpack_topic_;
   LauncherPack lp_; /* 发给发射的数据包缓冲 */
   LibXR::Topic sentrypack_topic_;
-  SentryPack sp_; /* 发给哨兵的数据包缓冲 */
+  SentryPack sp_;   /* 发给哨兵的数据包缓冲 */
   bool last_parse_; /* 上一次解包是否成功 */
 
   /* 线程相关 */
