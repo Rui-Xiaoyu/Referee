@@ -21,11 +21,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: Modules/${{ env.XR_MODULE_NAME }}
+
       - name: Checkout CMD module
         uses: actions/checkout@v4
         with:
           repository: QDU-Robomaster/CMD
-          path: bsp-dev-c/Modules/CMD
+          path: Modules/CMD
 
       - name: Create main.cpp
         run: |
