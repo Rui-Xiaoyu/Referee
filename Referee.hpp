@@ -1412,8 +1412,9 @@ class Referee : public LibXR::Application {
         if (PAYLOAD_LEN < 6) {
           return false;
         }
-        LibXR::Memory::FastSet(this->data_.robot_ineraction_data.user_data, 0,
-                    sizeof(this->data_.robot_ineraction_data.user_data));
+        LibXR::Memory::FastSet(
+            this->data_.robot_ineraction_data.user_data, 0,
+            sizeof(this->data_.robot_ineraction_data.user_data));
         LibXR::Memory::FastCopy(&this->data_.robot_ineraction_data, payload, 6);
         const size_t USER_DATA_LEN = std::min<size_t>(
             PAYLOAD_LEN - 6,
