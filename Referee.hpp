@@ -30,7 +30,7 @@ depends: []
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include "cmsis_gcc.h"
+
 #include "CMD.hpp"
 #include "app_framework.hpp"
 #include "crc.hpp"
@@ -1245,7 +1245,7 @@ class Referee : public LibXR::Application {
                             (static_cast<uint16_t>(this->pack_.buf_[1]) << 8);
 
     if (CMD_ID == 0x0001) {
-      __NOP();
+    
     }
 
     const uint8_t* payload = &this->pack_.buf_[2];
