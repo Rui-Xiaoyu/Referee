@@ -30,7 +30,7 @@ depends: []
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-
+#include "cmsis_gcc.h"
 #include "CMD.hpp"
 #include "app_framework.hpp"
 #include "crc.hpp"
