@@ -994,8 +994,8 @@ class Referee : public LibXR::Application {
    */
   struct [[gnu::packed]] SentryPack {
     /* TODO: 待更新 */
-    RobotStatus rs;
-    GameStatus gs; /* 热量上限和冷却速率 */
+    RobotStatus rs; /* 热量上限和冷却速率 */
+    GameStatus gs;  /*比赛信息*/
   };
 
   /**
@@ -1243,11 +1243,6 @@ class Referee : public LibXR::Application {
 
     const uint16_t CMD_ID = static_cast<uint16_t>(this->pack_.buf_[0]) |
                             (static_cast<uint16_t>(this->pack_.buf_[1]) << 8);
-
-    if (CMD_ID == 0x0001) {
-    
-    }
-
     const uint8_t* payload = &this->pack_.buf_[2];
 
     const auto COPY_PAYLOAD = [payload, PAYLOAD_LEN](auto& dst) -> bool {
@@ -1424,8 +1419,9 @@ class Referee : public LibXR::Application {
         if (PAYLOAD_LEN < 6) {
           return false;
         }
-        std::memset(this->data_.robot_ineraction_data.user_data, 0,
-                    sizeof(this->data_.robot_ineraction_data.user_data));
+        LibXR::Memory::FastSet(
+            this->data_.robot_ineraction_data.user_data, 0,
+            sizeof(this->data_.robot_ineraction_data.user_data));
         LibXR::Memory::FastCopy(&this->data_.robot_ineraction_data, payload, 6);
         const size_t USER_DATA_LEN = std::min<size_t>(
             PAYLOAD_LEN - 6,
