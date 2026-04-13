@@ -984,6 +984,8 @@ class Referee : public LibXR::Application {
    */
   struct [[gnu::packed]] LauncherPack {
     RobotStatus rs; /* 热量上限和冷却速率 */
+    // PowerHeat ph;
+    uint16_t launcher_id1_17_heat; /* 第1个17mm发射机构的射击热量 */
   };
 
   /**
@@ -993,6 +995,7 @@ class Referee : public LibXR::Application {
   struct [[gnu::packed]] SentryPack {
     /* TODO: 待更新 */
     RobotStatus rs; /* 热量上限和冷却速率 */
+    GameStatus gs;  /*比赛信息*/
   };
 
   /**
@@ -1416,8 +1419,9 @@ class Referee : public LibXR::Application {
         if (PAYLOAD_LEN < 6) {
           return false;
         }
-        std::memset(this->data_.robot_ineraction_data.user_data, 0,
-                    sizeof(this->data_.robot_ineraction_data.user_data));
+        LibXR::Memory::FastSet(
+            this->data_.robot_ineraction_data.user_data, 0,
+            sizeof(this->data_.robot_ineraction_data.user_data));
         LibXR::Memory::FastCopy(&this->data_.robot_ineraction_data, payload, 6);
         const size_t USER_DATA_LEN = std::min<size_t>(
             PAYLOAD_LEN - 6,
@@ -1627,9 +1631,15 @@ class Referee : public LibXR::Application {
     }
     this->cp_.rs = this->data_.robot_status;
     this->chassispack_topic_.Publish(this->cp_);
-    this->lp_.rs = this->data_.robot_status;
+    this->lp_.rs.shooter_cooling_value =
+        this->data_.robot_status.shooter_cooling_value;
+    this->lp_.rs.shooter_heat_limit =
+        this->data_.robot_status.shooter_heat_limit;
+    this->lp_.launcher_id1_17_heat =
+        this->data_.power_heat.launcher_id1_17_heat;
     this->launcherpack_topic_.Publish(this->lp_);
     this->sp_.rs = this->data_.robot_status;
+    this->sp_.gs = this->data_.game_status;
     this->sentrypack_topic_.Publish(this->sp_);
   }
 
