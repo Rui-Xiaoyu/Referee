@@ -21,6 +21,7 @@ constructor_args:
   - referee_chassis_tp_name: "chassis_ref"
   - referee_launcher_tp_name: "launcher_ref"
   - referee_sentry_tp_name: "sentry_ref"
+  - thread_priority_uart: LibXR::Thread::Priority::LOW
 required_hardware: dma uart
 depends: []
 === END MANIFEST === */
@@ -983,6 +984,8 @@ class Referee : public LibXR::Application {
    */
   struct [[gnu::packed]] LauncherPack {
     RobotStatus rs; /* 热量上限和冷却速率 */
+    // PowerHeat ph;
+    uint16_t launcher_id1_17_heat; /* 第1个17mm发射机构的射击热量 */
   };
 
   /**
@@ -992,6 +995,7 @@ class Referee : public LibXR::Application {
   struct [[gnu::packed]] SentryPack {
     /* TODO: 待更新 */
     RobotStatus rs; /* 热量上限和冷却速率 */
+    GameStatus gs;  /*比赛信息*/
   };
 
   /**
@@ -1015,7 +1019,10 @@ class Referee : public LibXR::Application {
           uint32_t task_stack_depth_uart, const char* uart, uint32_t baudrate,
           const char* referee_chassis_tp_name,
           const char* referee_launcher_tp_name,
-          const char* referee_sentry_tp_name, CMD* cmd = nullptr)
+          const char* referee_sentry_tp_name,
+          LibXR::Thread::Priority thread_priority_uart =
+              LibXR::Thread::Priority::LOW,
+          CMD* cmd = nullptr)
       : uart_(hw.Find<LibXR::UART>(uart)),
         sem_(0),
         op_(sem_, 5000), /* TODO:测延时 */
@@ -1033,7 +1040,7 @@ class Referee : public LibXR::Application {
     uart_->SetConfig({baudrate, LibXR::UART::Parity::NO_PARITY, 8, 1});
 
     this->thread_.Create(this, ThreadFunc, "Referee", task_stack_depth_uart,
-                         LibXR::Thread::Priority::HIGH);
+                         thread_priority_uart);
   }
 
   void BindCMD(CMD& cmd) { cmd_ = &cmd; }
@@ -1177,7 +1184,7 @@ class Referee : public LibXR::Application {
       ref->last_parse_ = ref->ParseData();
       ref->Publish();
       // ref->uart_->Write(0b01010101, ref->op_);
-      // LibXR::Thread::Sleep(10);
+      LibXR::Thread::Sleep(10);
     }
   }
 
@@ -1624,9 +1631,15 @@ class Referee : public LibXR::Application {
     }
     this->cp_.rs = this->data_.robot_status;
     this->chassispack_topic_.Publish(this->cp_);
-    this->lp_.rs = this->data_.robot_status;
+    this->lp_.rs.shooter_cooling_value =
+        this->data_.robot_status.shooter_cooling_value;
+    this->lp_.rs.shooter_heat_limit =
+        this->data_.robot_status.shooter_heat_limit;
+    this->lp_.launcher_id1_17_heat =
+        this->data_.power_heat.launcher_id1_17_heat;
     this->launcherpack_topic_.Publish(this->lp_);
     this->sp_.rs = this->data_.robot_status;
+    this->sp_.gs = this->data_.game_status;
     this->sentrypack_topic_.Publish(this->sp_);
   }
 
