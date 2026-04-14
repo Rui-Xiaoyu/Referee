@@ -1003,7 +1003,8 @@ class Referee : public LibXR::Application {
    *
    */
   struct [[gnu::packed]] ChassisPack {
-    RobotStatus rs; /* 等级和功率上限 */
+    RobotStatus rs;        /* 等级和功率上限 */
+    uint16_t power_buffer; /* 底盘缓冲能量，单位 J */
   };
 
   /**
@@ -1630,6 +1631,7 @@ class Referee : public LibXR::Application {
       return;
     }
     this->cp_.rs = this->data_.robot_status;
+    this->cp_.power_buffer = this->data_.power_heat.chassis_pwr_buff;
     this->chassispack_topic_.Publish(this->cp_);
     this->lp_.rs.shooter_cooling_value =
         this->data_.robot_status.shooter_cooling_value;
