@@ -1100,7 +1100,6 @@ class Referee : public LibXR::Application {
     return SendFrame(CommandID::REF_CMD_ID_INTER_STUDENT, interaction_pack);
   }
 
-
   uint16_t GetRobotID() const { return data_.robot_status.robot_id; }
 
   static void InitFigure(UIFigure& fig, const char* name, UIFigureOp op,
@@ -1126,9 +1125,8 @@ class Referee : public LibXR::Application {
 
   void FillCharacter(Referee::UICharacter& fig, const char* name,
                      Referee::UIFigureOp op, uint8_t layer,
-                     Referee::UIColor color, uint16_t font_size,
-                     uint16_t width, uint16_t x, uint16_t y,
-                     const char* text) {
+                     Referee::UIColor color, uint16_t font_size, uint16_t width,
+                     uint16_t x, uint16_t y, const char* text) {
     fig = {};
     SetFigureName(fig.grapic_data_struct.figure_name, name);
     fig.grapic_data_struct.operate_type = static_cast<uint32_t>(op);
@@ -1150,29 +1148,28 @@ class Referee : public LibXR::Application {
   }
 
   void FillLine(Referee::UIFigure& fig, const char* name,
-                Referee::UIFigureOp op, uint8_t layer,
-                Referee::UIColor color, uint16_t width, uint16_t x1,
-                uint16_t y1, uint16_t x2, uint16_t y2) {
-    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_LINE, layer,
-               color, width, x1, y1);
+                Referee::UIFigureOp op, uint8_t layer, Referee::UIColor color,
+                uint16_t width, uint16_t x1, uint16_t y1, uint16_t x2,
+                uint16_t y2) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_LINE, layer, color,
+               width, x1, y1);
     fig.details_d = x2;
     fig.details_e = y2;
   }
 
   void FillRect(Referee::UIFigure& fig, const char* name,
-                Referee::UIFigureOp op, uint8_t layer,
-                Referee::UIColor color, uint16_t width, uint16_t x1,
-                uint16_t y1, uint16_t x2, uint16_t y2) {
-    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_RECT, layer,
-               color, width, x1, y1);
+                Referee::UIFigureOp op, uint8_t layer, Referee::UIColor color,
+                uint16_t width, uint16_t x1, uint16_t y1, uint16_t x2,
+                uint16_t y2) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_RECT, layer, color,
+               width, x1, y1);
     fig.details_d = x2;
     fig.details_e = y2;
   }
 
   void FillCircle(Referee::UIFigure& fig, const char* name,
-                  Referee::UIFigureOp op, uint8_t layer,
-                  Referee::UIColor color, uint16_t width, uint16_t x,
-                  uint16_t y, uint16_t radius) {
+                  Referee::UIFigureOp op, uint8_t layer, Referee::UIColor color,
+                  uint16_t width, uint16_t x, uint16_t y, uint16_t radius) {
     InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_CIRCLE, layer,
                color, width, x, y);
     fig.details_c = radius;
@@ -1188,13 +1185,12 @@ class Referee : public LibXR::Application {
     fig.details_e = y_half_axis;
   }
 
-  void FillArc(Referee::UIFigure& fig, const char* name,
-               Referee::UIFigureOp op, uint8_t layer,
-               Referee::UIColor color, uint16_t width, uint16_t x, uint16_t y,
-               uint16_t start_angle, uint16_t end_angle,
+  void FillArc(Referee::UIFigure& fig, const char* name, Referee::UIFigureOp op,
+               uint8_t layer, Referee::UIColor color, uint16_t width,
+               uint16_t x, uint16_t y, uint16_t start_angle, uint16_t end_angle,
                uint16_t x_half_axis, uint16_t y_half_axis) {
-    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_ARC, layer,
-               color, width, x, y);
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_ARC, layer, color,
+               width, x, y);
     fig.details_a = start_angle;
     fig.details_b = end_angle;
     fig.details_d = x_half_axis;
@@ -1202,21 +1198,20 @@ class Referee : public LibXR::Application {
   }
 
   void FillFloat(Referee::UIFigure& fig, const char* name,
-                 Referee::UIFigureOp op, uint8_t layer,
-                 Referee::UIColor color, uint16_t font_size, uint16_t width,
-                 uint16_t x, uint16_t y, float value) {
+                 Referee::UIFigureOp op, uint8_t layer, Referee::UIColor color,
+                 uint16_t font_size, uint16_t width, uint16_t x, uint16_t y,
+                 float value) {
     InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_FLOAT, layer,
                color, width, x, y);
     fig.details_a = font_size;
     SetFigureValue32(fig, static_cast<int32_t>(value * 1000.0f));
   }
 
-  void FillInt(Referee::UIFigure& fig, const char* name,
-               Referee::UIFigureOp op, uint8_t layer,
-               Referee::UIColor color, uint16_t font_size, uint16_t width,
-               uint16_t x, uint16_t y, int32_t value) {
-    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_INT, layer,
-               color, width, x, y);
+  void FillInt(Referee::UIFigure& fig, const char* name, Referee::UIFigureOp op,
+               uint8_t layer, Referee::UIColor color, uint16_t font_size,
+               uint16_t width, uint16_t x, uint16_t y, int32_t value) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_INT, layer, color,
+               width, x, y);
     fig.details_a = font_size;
     SetFigureValue32(fig, value);
   }
@@ -1238,7 +1233,6 @@ class Referee : public LibXR::Application {
       dst[i] = static_cast<uint8_t>(name[i]);
     }
   }
-
 
   ErrorCode SendUILayerDelete(uint16_t sender_id, uint16_t receiver_id,
                               const UILayerDelete& payload) {
