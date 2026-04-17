@@ -22,6 +22,12 @@ jobs:
         with:
           path: Modules/${{ env.XR_MODULE_NAME }}
 
+      - name: Checkout CMD module
+        uses: actions/checkout@v4
+        with:
+          repository: QDU-Robomaster/CMD
+          path: Modules/CMD
+
       - name: Create main.cpp
         run: |
           cat > main.cpp <<'EOF'
@@ -77,6 +83,10 @@ jobs:
       - name: Add BlinkLED module
         run: |
           xrobot_add_mod BlinkLED --instance-id BlinkLED_0
+
+      - name: Add CMD module
+        run: |
+          xrobot_add_mod CMD --instance-id cmd
 
       - name: Add this repo module
         run: |
