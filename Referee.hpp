@@ -1041,7 +1041,7 @@ class Referee : public LibXR::Application {
     uart_->SetConfig({baudrate, LibXR::UART::Parity::NO_PARITY, 8, 1});
 
     this->thread_.Create(this, ThreadFunc, "Referee", task_stack_depth_uart,
-                         thread_priority_uart);
+                         LibXR::Thread::Priority::LOW);
   }
 
   void BindCMD(CMD& cmd) { cmd_ = &cmd; }
@@ -1106,6 +1106,140 @@ class Referee : public LibXR::Application {
     interaction_pack.receiver_id = receiver_id;
     interaction_pack.payload = payload;
     return SendFrame(CommandID::REF_CMD_ID_INTER_STUDENT, interaction_pack);
+  }
+
+  uint16_t GetRobotID() const { return data_.robot_status.robot_id; }
+
+  static void InitFigure(UIFigure& fig, const char* name, UIFigureOp op,
+                         UIFigureType type, uint8_t layer, UIColor color,
+                         uint16_t width, uint16_t x, uint16_t y) {
+    fig = {};
+    SetFigureName(fig.figure_name, name);
+    fig.operate_type = static_cast<uint32_t>(op);
+    fig.figure_type = static_cast<uint32_t>(type);
+    fig.layer = layer;
+    fig.color = static_cast<uint32_t>(color);
+    fig.width = width;
+    fig.start_x = x;
+    fig.start_y = y;
+  }
+
+  static void SetFigureValue32(UIFigure& fig, int32_t value) {
+    const uint32_t RAW = static_cast<uint32_t>(value);
+    fig.details_c = RAW & 0x3FFu;
+    fig.details_d = (RAW >> 10) & 0x7FFu;
+    fig.details_e = (RAW >> 21) & 0x7FFu;
+  }
+
+  void FillCharacter(Referee::UICharacter& fig, const char* name,
+                     Referee::UIFigureOp op, uint8_t layer,
+                     Referee::UIColor color, uint16_t font_size, uint16_t width,
+                     uint16_t x, uint16_t y, const char* text) {
+    fig = {};
+    SetFigureName(fig.grapic_data_struct.figure_name, name);
+    fig.grapic_data_struct.operate_type = static_cast<uint32_t>(op);
+    fig.grapic_data_struct.figure_type =
+        static_cast<uint32_t>(Referee::UIFigureType::UI_TYPE_CHAR);
+    fig.grapic_data_struct.layer = layer;
+    fig.grapic_data_struct.color = static_cast<uint32_t>(color);
+    fig.grapic_data_struct.details_a = font_size;
+
+    uint16_t text_len = 0;
+    if (text != nullptr) {
+      text_len = static_cast<uint16_t>(strnlen(text, sizeof(fig.data)));
+      memcpy(fig.data, text, text_len);
+    }
+    fig.grapic_data_struct.details_b = text_len;
+    fig.grapic_data_struct.width = width;
+    fig.grapic_data_struct.start_x = x;
+    fig.grapic_data_struct.start_y = y;
+  }
+
+  void FillLine(Referee::UIFigure& fig, const char* name,
+                Referee::UIFigureOp op, uint8_t layer, Referee::UIColor color,
+                uint16_t width, uint16_t x1, uint16_t y1, uint16_t x2,
+                uint16_t y2) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_LINE, layer, color,
+               width, x1, y1);
+    fig.details_d = x2;
+    fig.details_e = y2;
+  }
+
+  void FillRect(Referee::UIFigure& fig, const char* name,
+                Referee::UIFigureOp op, uint8_t layer, Referee::UIColor color,
+                uint16_t width, uint16_t x1, uint16_t y1, uint16_t x2,
+                uint16_t y2) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_RECT, layer, color,
+               width, x1, y1);
+    fig.details_d = x2;
+    fig.details_e = y2;
+  }
+
+  void FillCircle(Referee::UIFigure& fig, const char* name,
+                  Referee::UIFigureOp op, uint8_t layer, Referee::UIColor color,
+                  uint16_t width, uint16_t x, uint16_t y, uint16_t radius) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_CIRCLE, layer,
+               color, width, x, y);
+    fig.details_c = radius;
+  }
+
+  void FillEllipse(Referee::UIFigure& fig, const char* name,
+                   Referee::UIFigureOp op, uint8_t layer,
+                   Referee::UIColor color, uint16_t width, uint16_t x,
+                   uint16_t y, uint16_t x_half_axis, uint16_t y_half_axis) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_ELLIPSE, layer,
+               color, width, x, y);
+    fig.details_d = x_half_axis;
+    fig.details_e = y_half_axis;
+  }
+
+  void FillArc(Referee::UIFigure& fig, const char* name, Referee::UIFigureOp op,
+               uint8_t layer, Referee::UIColor color, uint16_t width,
+               uint16_t x, uint16_t y, uint16_t start_angle, uint16_t end_angle,
+               uint16_t x_half_axis, uint16_t y_half_axis) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_ARC, layer, color,
+               width, x, y);
+    fig.details_a = start_angle;
+    fig.details_b = end_angle;
+    fig.details_d = x_half_axis;
+    fig.details_e = y_half_axis;
+  }
+
+  void FillFloat(Referee::UIFigure& fig, const char* name,
+                 Referee::UIFigureOp op, uint8_t layer, Referee::UIColor color,
+                 uint16_t font_size, uint16_t width, uint16_t x, uint16_t y,
+                 float value) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_FLOAT, layer,
+               color, width, x, y);
+    fig.details_a = font_size;
+    SetFigureValue32(fig, static_cast<int32_t>(value * 1000.0f));
+  }
+
+  void FillInt(Referee::UIFigure& fig, const char* name, Referee::UIFigureOp op,
+               uint8_t layer, Referee::UIColor color, uint16_t font_size,
+               uint16_t width, uint16_t x, uint16_t y, int32_t value) {
+    InitFigure(fig, name, op, Referee::UIFigureType::UI_TYPE_INT, layer, color,
+               width, x, y);
+    fig.details_a = font_size;
+    SetFigureValue32(fig, value);
+  }
+
+  uint16_t GetClientID(uint16_t robot_id) {
+    if (robot_id > 100) {
+      return static_cast<uint16_t>(robot_id - 101 + 0x0165);
+    }
+    return static_cast<uint16_t>(robot_id + 0x0100);
+  }
+  static void SetFigureName(uint8_t (&dst)[3], const char* name) {
+    dst[0] = ' ';
+    dst[1] = ' ';
+    dst[2] = ' ';
+    if (name == nullptr) {
+      return;
+    }
+    for (int i = 0; i < 3 && name[i] != '\0'; ++i) {
+      dst[i] = static_cast<uint8_t>(name[i]);
+    }
   }
 
   ErrorCode SendUILayerDelete(uint16_t sender_id, uint16_t receiver_id,
